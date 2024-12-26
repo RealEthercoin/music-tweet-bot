@@ -1,22 +1,38 @@
-name: Scheduled Workflow
+name: Run Lyric Bot
 
 on:
   schedule:
-    - cron: '30 */2 * * *'
+    - cron: '30 */2 * * *'  # Runs every 2 hours at 30 minutes past the hour
+  workflow_dispatch:  # Allows manual triggering from GitHub's Actions tab
 
 jobs:
-  scheduled_job:
+  run-bot:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout repository
       uses: actions/checkout@v2
+
     - name: Set up Python
       uses: actions/setup-python@v2
       with:
         python-version: '3.x'  # This will use the latest Python version available on GitHub Actions
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt  # Assuming you have a requirements.txt file with your dependencies
-    - name: Run script
-      run: python lyrics_bot.py  # Replace 'your_script.py
+        pip install tweepy requests Pillow python-dotenv
+
+    - name: Run Lyric Bot
+      env:
+        API_KEY: ${{ secrets.API_KEY }}
+        API_SECRET: ${{ secrets.API_SECRET }}
+        ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
+        ACCESS_TOKEN_SECRET: ${{ secrets.ACCESS_TOKEN_SECRET }}
+        BEARER_TOKEN: ${{ secrets.BEARER_TOKEN }}
+        LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
+      run: |
+        python lyrics_bot.py
+
+    - name: Upload image artifact
+      if: always()
+      uses: actions/upload-artifact@v2
