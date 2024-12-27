@@ -2,34 +2,41 @@ name: Lyric Bot
 
 on:
   schedule:
-    - cron: '0 */3 * * *'  # Runs every 3 hours
-  workflow_dispatch:  # Allows manual trigger
+    # Runs every day at 12:00 (UTC). Adjust as needed.
+    - cron: '0 12 * * *'
+  # Allows you to run it manually via the Actions tab
+  workflow_dispatch:
 
 jobs:
   run-lyric-bot:
     runs-on: ubuntu-latest
-
     steps:
-      # ✅ Step 1: Checkout Repository
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+      # 1) Check out the repository
+      - name: Check out code
+        uses: actions/checkout@v3
 
-      # ✅ Step 2: Set up Python
+      # 2) Set up Python
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: '3.x'
 
-      # ✅ Step 3: Install Dependencies
-      - name: Install Dependencies
+      # 3) Install system dependencies (for fonts, etc.)
+      - name: Install system dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
           sudo apt-get update
-          sudo apt-get install -y fonts-dejavu-core
+          sudo apt-get install -y --no-install-recommends ttf-mscorefonts-installer
+          sudo fc-cache -fv
 
-      # ✅ Step 4: Set up Environment Variables
-      - name: Set up Environment Variables
+      # 4) Install Python dependencies
+      - name: Install Python dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # 5) Run your Python script
+      - name: Run lyric script
+        run: python lyrics_bot.py
         env:
           API_KEY: ${{ secrets.API_KEY }}
           API_SECRET: ${{ secrets.API_SECRET }}
@@ -37,43 +44,3 @@ jobs:
           ACCESS_TOKEN_SECRET: ${{ secrets.ACCESS_TOKEN_SECRET }}
           BEARER_TOKEN: ${{ secrets.BEARER_TOKEN }}
           LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
-        run: |
-          echo "API_KEY=${API_KEY}" >> .env
-          echo "API_SECRET=${API_SECRET}" >> .env
-          echo "ACCESS_TOKEN=${ACCESS_TOKEN}" >> .env
-          echo "ACCESS_TOKEN_SECRET=${ACCESS_TOKEN_SECRET}" >> .env
-          echo "BEARER_TOKEN=${BEARER_TOKEN}" >> .env
-          echo "LASTFM_API_KEY=${LASTFM_API_KEY}" >> .env
-
-      # ✅ Step 5: Ensure Write Permissions
-      - name: Ensure Write Permissions
-        run: |
-          chmod -R 777 .
-
-      # ✅ Step 6: Run Lyric Bot
-      - name: Run Lyric Bot
-        run: python lyrics_bot.py
-
-      # ✅ Step 7: Validate Image Accessibility
-      - name: Validate Generated Image
-        run: |
-          if [ ! -f "lyric_image.png" ]; then
-            echo "❌ Generated image not found! Exiting workflow."
-            exit 1
-          else
-            echo "✅ Image found and accessible, proceeding."
-          fi
-
-      # ✅ Step 8: Upload Generated Image (Debugging)
-      - name: Upload Lyric Image
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: lyric_image
-          path: lyric_image.png
-
-      # ✅ Step 9: Cleanup (Optional)
-      - name: Cleanup Workspace
-        if: always()
-        run: |
-          rm -f lyric_image.png
