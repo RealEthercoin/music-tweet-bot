@@ -1,40 +1,33 @@
-name: Lyric Bot
+name: Lyric Bot (Windows Runner)
 
 on:
+  # 1) Schedule to run every 3 hours
   schedule:
-    # Runs every day at 12:00 (UTC). Adjust as needed.
-    - cron: '0 12 * * *'
-  # Allows you to run it manually via the Actions tab
+    - cron: "0 */3 * * *"
+  # 2) Allows manual (on-demand) runs
   workflow_dispatch:
 
 jobs:
   run-lyric-bot:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
-      # 1) Check out the repository
+      # 3) Check out your repository
       - name: Check out code
         uses: actions/checkout@v3
 
-      # 2) Set up Python
+      # 4) Set up Python
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.x'
 
-      # 3) Install system dependencies (for fonts, etc.)
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ttf-mscorefonts-installer
-          sudo fc-cache -fv
-
-      # 4) Install Python dependencies
+      # 5) Install dependencies
       - name: Install Python dependencies
         run: |
-          pip install --upgrade pip
+          python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # 5) Run your Python script
+      # 6) Run your script
       - name: Run lyric script
         run: python lyrics_bot.py
         env:
