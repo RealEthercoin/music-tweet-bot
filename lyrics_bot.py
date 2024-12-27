@@ -173,7 +173,7 @@ def generate_lyric_image(song_title, artist, lyrics, album_cover_url):
 # ✅ Post on Twitter
 # ------------------------------------------------
 def post_lyric_image_v2(image_path, song_title, artist, lyrics_excerpt):
-    tweet_text = f"🎵 {lyrics_excerpt.replace('\n', ' ')}\n- {artist} #Music #Lyrics #PopCulture"
+    tweet_text = f"🎵 {lyrics_excerpt.replace('\n', ' ')} - {artist} #Music #Lyrics #PopCulture"
     media = api.media_upload(image_path)
     client.create_tweet(text=tweet_text, media_ids=[media.media_id_string])
     print("✅ Tweet posted successfully.")
