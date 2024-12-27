@@ -5,7 +5,6 @@ import random
 from dotenv import load_dotenv
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 from io import BytesIO
-import random
 
 # ✅ Load Environment Variables
 load_dotenv()
@@ -103,62 +102,48 @@ def fetch_album_cover(song_title, artist):
             response = requests.get(source)
             response.raise_for_status()
             data = response.json()
+            
+            # iTunes API
             if "results" in data and data["results"]:
                 return data["results"][0].get("artworkUrl100")
+            
+            # Deezer API
             if "data" in data and data["data"]:
                 return data["data"][0].get("album", {}).get("cover_big")
+            
+            # Last.fm API
             if "track" in data:
-                return data["track"].get("album", {}).get("image", [{}])[-1].get("#text")
+                album_images = data["track"].get("album", {}).get("image", [])
+                if album_images:
+                    return album_images[-1].get("#text")
         except Exception as e:
             print(f"❌ Error fetching album cover from {source}: {e}")
+    
     print("❌ All album cover sources failed.")
     return None
 
+# ------------------------------------------------
+# ✅ Dynamic Font Adjustment
+# ------------------------------------------------
 def adjust_font_size(draw, text, max_width, max_height, font_path, start_size=55):
-    """
-    Dynamically adjusts the font size to fit the text within given dimensions.
-    
-    Args:
-        draw: PIL.ImageDraw instance.
-        text: The text string to fit.
-        max_width: Maximum width allowed for the text.
-        max_height: Maximum height allowed for the text.
-        font_path: Path to the font file.
-        start_size: Starting font size to test fitting.
-    
-    Returns:
-        PIL.ImageFont instance with adjusted size.
-    """
     font_size = start_size
-    while font_size > 10:  # Prevent font size from getting too small
+    while font_size > 10:
         font = ImageFont.truetype(font_path, font_size)
-        
-        # Calculate the bounding box of the text
         text_bbox = draw.multiline_textbbox((0, 0), text, font=font)
         text_width = text_bbox[2] - text_bbox[0]
         text_height = text_bbox[3] - text_bbox[1]
-        
-        # Check if the text fits within the allowed dimensions
         if text_width <= max_width and text_height <= max_height:
             return font
-        
-        font_size -= 2  # Decrease font size incrementally if it doesn't fit
-    
-    # Return minimum size if no fitting size is found
+        font_size -= 2
     return ImageFont.truetype(font_path, 10)
-
 
 # ------------------------------------------------
 # ✅ Generate Lyric Image
 # ------------------------------------------------
 def generate_lyric_image(song_title, artist, lyrics, album_cover_url):
     try:
-        # Split the lyrics into lines and select two random lines
-        lines = lyrics.split('\n')
-        if len(lines) >= 2:
-            selected_lyrics = '\n'.join(random.sample(lines, 2))  # Randomly select two lines
-        else:
-            selected_lyrics = '\n'.join(lines)  # If there are fewer than two lines, use all available
+        lines = [line.strip() for line in lyrics.split('\n') if line.strip()]
+        selected_lyrics = '\n'.join(random.sample(lines, min(len(lines), 2)))
 
         img = Image.new("RGB", (1200, 675), color=random.choice(PASTEL_COLORS))
         draw = ImageDraw.Draw(img)
@@ -171,7 +156,7 @@ def generate_lyric_image(song_title, artist, lyrics, album_cover_url):
         draw.text((50, 120), artist, font=artist_font, fill="grey")
         draw.multiline_text((600, 350), selected_lyrics, font=lyrics_font, fill="black", anchor="mm", align="center")
 
-        if album_cover_url:
+        if album_cover_url and isinstance(album_cover_url, str):
             response = requests.get(album_cover_url)
             album_cover = Image.open(BytesIO(response.content)).resize((150, 150))
             img.paste(album_cover, (50, 500))
@@ -179,28 +164,28 @@ def generate_lyric_image(song_title, artist, lyrics, album_cover_url):
         draw.text((1050, 630), "@lyric_loops", font=ImageFont.truetype("arial.ttf", 25), fill="black")
         img.save(IMAGE_OUTPUT, format="PNG")
         print("✅ Image saved successfully.")
-        return IMAGE_OUTPUT
+        return IMAGE_OUTPUT, selected_lyrics
     except Exception as e:
         print(f"❌ Error generating image: {e}")
-        return None
+        return None, None
 
 # ------------------------------------------------
 # ✅ Post on Twitter
 # ------------------------------------------------
-def post_lyric_image(image_path, song_title, artist, lyrics):
-    tweet_text = f"🎵 {lyrics[:200]}... - {artist}"
+def post_lyric_image_v2(image_path, song_title, artist, lyrics_excerpt):
+    tweet_text = f"🎵 {lyrics_excerpt.replace('\n', ' ')}\n- {artist} #Music #Lyrics #PopCulture"
     media = api.media_upload(image_path)
     client.create_tweet(text=tweet_text, media_ids=[media.media_id_string])
     print("✅ Tweet posted successfully.")
 
 # ------------------------------------------------
-# ✅ Main
+# ✅ Main Execution
 # ------------------------------------------------
 if __name__ == "__main__":
     song_title, artist = fetch_random_song_from_lastfm()
     lyrics = fetch_lyrics(song_title, artist)
     cover_url = fetch_album_cover(song_title, artist)
     if lyrics:
-        image = generate_lyric_image(song_title, artist, lyrics, cover_url)
+        image, selected_lyrics = generate_lyric_image(song_title, artist, lyrics, cover_url)
         if image:
-            post_lyric_image(image, song_title, artist, lyrics)
+            post_lyric_image_v2(image, song_title, artist, selected_lyrics)
