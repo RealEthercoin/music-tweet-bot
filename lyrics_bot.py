@@ -12,6 +12,10 @@ from moviepy.audio.AudioClip import concatenate_audioclips
 from moviepy.video.compositing.CompositeVideoClip import CompositeVideoClip
 import time
 import re
+import emoji
+
+# Fix UnicodeEncodeError on Windows
+sys.stdout.reconfigure(encoding='utf-8')
 
 # ✅ Load Environment Variables
 load_dotenv()
