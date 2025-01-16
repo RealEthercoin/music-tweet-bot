@@ -33,4 +33,4 @@ jobs:
           BEARER_TOKEN: ${{ secrets.BEARER_TOKEN }}
           LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
         run: |
-          python song_tweet_bot.py
+          python lyrics_bot.py
