@@ -2,3 +2,4 @@ tweepy
 pillow
 python-dotenv
 requests
+moviepy
