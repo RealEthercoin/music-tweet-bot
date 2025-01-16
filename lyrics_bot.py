@@ -8,11 +8,20 @@ from moviepy.audio.io.AudioFileClip import AudioFileClip
 from moviepy.video.VideoClip import ImageClip
 from moviepy.audio.AudioClip import concatenate_audioclips
 from PIL import Image, ImageDraw, ImageFont
-from io import BytesIO
-import re
+import logging
+
+# Configure Logging
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Load Environment Variables
 load_dotenv()
+
+# Validate Environment Variables
+required_env_vars = ["API_KEY", "API_SECRET", "ACCESS_TOKEN", "ACCESS_TOKEN_SECRET", "BEARER_TOKEN", "LASTFM_API_KEY"]
+for var in required_env_vars:
+    if not os.getenv(var):
+        logging.error(f"Environment variable {var} is not set.")
+        exit(1)
 
 # API Credentials
 API_KEY = os.getenv("API_KEY")
@@ -44,148 +53,124 @@ IMAGE_OUTPUT = "lyric_image.png"
 def fetch_trending_song():
     try:
         url = f"http://ws.audioscrobbler.com/2.0/?method=chart.gettoptracks&api_key={LASTFM_API_KEY}&format=json"
-        print(f"Fetching trending song from LastFM API: {url}")
-        response = requests.get(url, timeout=10)  # Set a timeout of 10 seconds
+        logging.debug(f"Fetching trending song from LastFM API: {url}")
+        response = requests.get(url, timeout=10)
         response.raise_for_status()
         data = response.json()
         tracks = data.get("tracks", {}).get("track", [])
+        if not tracks:
+            logging.warning("No tracks found in the response.")
+            return None, None
         random_track = random.choice(tracks)
         song_title = random_track.get("name", "Unknown Song")
         artist = random_track.get("artist", {}).get("name", "Unknown Artist")
-        print(f"Selected Song: {song_title} by {artist}")
+        logging.info(f"Selected Song: {song_title} by {artist}")
         return song_title, artist
-    except requests.Timeout:
-        print("Error: Request to LastFM API timed out.")
-        return None, None
     except Exception as e:
-        print(f"Error fetching song: {e}")
+        logging.error(f"Error fetching song: {e}")
         return None, None
 
 # Fetch Album Cover
 def fetch_album_cover(song_title, artist):
     try:
         url = f"https://itunes.apple.com/search?term={artist} {song_title}&media=music"
-        response = requests.get(url)
+        logging.debug(f"Fetching album cover from iTunes API: {url}")
+        response = requests.get(url, timeout=10)
         response.raise_for_status()
         data = response.json()
         return data['results'][0].get('artworkUrl100')
     except Exception as e:
-        print(f"Error fetching album cover: {e}")
+        logging.error(f"Error fetching album cover: {e}")
         return None
 
 # Fetch Audio Preview
 def fetch_audio_preview(song_title, artist):
     try:
         url = f"https://itunes.apple.com/search?term={artist} {song_title}&media=music"
-        print(f"Fetching audio preview from iTunes API: {url}")
-        response = requests.get(url, timeout=10)  # Set a timeout
+        logging.debug(f"Fetching audio preview from iTunes API: {url}")
+        response = requests.get(url, timeout=10)
         response.raise_for_status()
         data = response.json()
         return data['results'][0].get('previewUrl')
-    except requests.Timeout:
-        print("Error: Request to iTunes API timed out.")
-        return None
     except Exception as e:
-        print(f"Error fetching audio preview: {e}")
+        logging.error(f"Error fetching audio preview: {e}")
         return None
 
 # Generate Lyric Image
 def generate_lyric_image(song_title, artist):
     try:
-        # Create an image with the song title and artist
         img = Image.new("RGB", (1280, 720), color="white")
         draw = ImageDraw.Draw(img)
-
-        # Use a font available on Ubuntu
         font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 60)
         draw.text((100, 100), f"{song_title}\nby {artist}", fill="black", font=font)
-
         img.save(IMAGE_OUTPUT)
-        print(f"Lyric image saved: {IMAGE_OUTPUT}")
+        logging.info(f"Lyric image saved: {IMAGE_OUTPUT}")
         return IMAGE_OUTPUT
     except Exception as e:
-        print(f"Error generating lyric image: {e}")
+        logging.error(f"Error generating lyric image: {e}")
         return None
 
 # Create Video with Audio Hook
 def process_audio(audio_path, target_duration=30):
-    audio_clip = AudioFileClip(audio_path)
-    if audio_clip.duration > target_duration:
-        audio_clip = audio_clip.subclipped(0, target_duration)
-    else:
-        loops = int(target_duration // audio_clip.duration) + 1
-        audio_clips = [audio_clip] * loops
-        audio_clip = concatenate_audioclips(audio_clips).subclipped(0, target_duration)
-    return audio_clip
+    try:
+        audio_clip = AudioFileClip(audio_path)
+        if audio_clip.duration > target_duration:
+            audio_clip = audio_clip.subclipped(0, target_duration)
+        else:
+            loops = int(target_duration // audio_clip.duration) + 1
+            audio_clips = [audio_clip] * loops
+            audio_clip = concatenate_audioclips(audio_clips).subclipped(0, target_duration)
+        return audio_clip
+    except Exception as e:
+        logging.error(f"Error processing audio: {e}")
+        return None
 
 def create_video(image_path, audio_path, output_path, duration=30):
     try:
-        print(f"Creating video with image: {image_path}, audio: {audio_path}")
         image_clip = ImageClip(image_path).set_duration(duration).resize(height=720, width=1280)
         audio_clip = process_audio(audio_path, duration)
         video_clip = image_clip.set_audio(audio_clip)
         video_clip.write_videofile(output_path, codec="libx264", fps=24)
-        print(f"Video created successfully at 1280x720 resolution.")
+        logging.info(f"Video created successfully at 1280x720 resolution.")
         return output_path
     except Exception as e:
-        print(f"Error creating video: {e}")
+        logging.error(f"Error creating video: {e}")
         return None
 
 # Tweet Video
 def tweet_video(song_title, artist):
     try:
-        print(f"Uploading video: {VIDEO_OUTPUT}")
         m1 = api.media_upload(VIDEO_OUTPUT, media_category='tweet_video')
-
         media_id = m1.media_id_string
-        print(f"Video uploaded successfully. Media ID: {media_id}")
-
+        logging.info(f"Video uploaded successfully. Media ID: {media_id}")
         tweet_text = f"🎵 {song_title} by {artist}\n#Trending #Music #NowPlaying"
         response = client.create_tweet(text=tweet_text, media_ids=[media_id])
         tweet_id = response.data['id']
-        print(f"Video tweeted successfully: https://twitter.com/user/status/{tweet_id}")
-    except tweepy.errors.TweepyException as e:
-        print(f"Tweepy error tweeting video: {e}")
+        logging.info(f"Video tweeted successfully: https://twitter.com/user/status/{tweet_id}")
     except Exception as e:
-        print(f"Unexpected error tweeting video: {e}")
+        logging.error(f"Error tweeting video: {e}")
 
 # Main Execution
 def main():
-    print("Starting the bot...")
     while True:
         try:
-            print("Fetching new song...")
             song_title, artist = fetch_trending_song()
             if not song_title or not artist:
-                print("No song fetched. Skipping to the next iteration.")
                 continue
-
             album_cover = fetch_album_cover(song_title, artist)
             audio_preview = fetch_audio_preview(song_title, artist)
-
             if not album_cover or not audio_preview:
-                print("Failed to fetch album cover or audio preview. Skipping...")
                 continue
-
-            print(f"Generating lyric image for {song_title} by {artist}")
             image_path = generate_lyric_image(song_title, artist)
-
-            # Download audio preview
-            print(f"Downloading audio preview: {audio_preview}")
             response = requests.get(audio_preview, timeout=10)
             with open(AUDIO_OUTPUT, "wb") as f:
                 f.write(response.content)
-
-            print("Creating video...")
             video_path = create_video(image_path, AUDIO_OUTPUT, VIDEO_OUTPUT)
             if video_path:
-                print("Tweeting video...")
                 tweet_video(song_title, artist)
-
         except Exception as e:
-            print(f"Error: {e}")
-
-        print("Waiting 2 hours before the next tweet...")
+            logging.error(f"Unexpected error: {e}")
+        logging.info("Waiting 2 hours before the next tweet...")
         time.sleep(7200)
 
 if __name__ == "__main__":
