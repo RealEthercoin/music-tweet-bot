@@ -1,4 +1,4 @@
-name: Lyric Bot (Windows Runner with UTF-8)
+name: Lyric Bot (Linux Runner)
 
 on:
   schedule:
@@ -8,19 +8,11 @@ on:
 
 jobs:
   run-lyric-bot:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     
     steps:
       - name: Check out code
         uses: actions/checkout@v3
-
-      - name: Force UTF-8 in PowerShell
-        shell: pwsh
-        run: |
-          # Change the console codepage to UTF-8
-          chcp 65001
-          # Set Python to always use UTF-8 for stdin/stdout
-          $env:PYTHONIOENCODING = "utf-8"
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -33,7 +25,6 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run lyric script
-        shell: pwsh
         env:
           API_KEY: ${{ secrets.API_KEY }}
           API_SECRET: ${{ secrets.API_SECRET }}
@@ -42,4 +33,4 @@ jobs:
           BEARER_TOKEN: ${{ secrets.BEARER_TOKEN }}
           LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
         run: |
-          python lyrics_bot.py
+          python song_tweet_bot.py
