@@ -84,11 +84,9 @@ def fetch_audio_preview(song_title, artist):
 # Generate Lyric Image
 def generate_lyric_image(song_title, artist):
     try:
-        # Create an image with the song title and artist
         img = Image.new("RGB", (1280, 720), color="white")
         draw = ImageDraw.Draw(img)
 
-        # Use a font available on Ubuntu
         font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 60)
         draw.text((100, 100), f"{song_title}\nby {artist}", fill="black", font=font)
 
@@ -113,7 +111,7 @@ def process_audio(audio_path, target_duration=30):
 def create_video(image_path, audio_path, output_path, duration=30):
     try:
         print(f"Creating video with image: {image_path}, audio: {audio_path}")
-        image_clip = ImageClip(image_path).set_duration(duration).resize((1280, 720))
+        image_clip = ImageClip(image_path).with_duration(duration).resize((1280, 720))
         audio_clip = process_audio(audio_path, duration)
         video_clip = image_clip.set_audio(audio_clip)
         video_clip.write_videofile(output_path, codec="libx264", fps=24)
@@ -126,22 +124,12 @@ def create_video(image_path, audio_path, output_path, duration=30):
 # Tweet Video
 def tweet_video(song_title, artist):
     try:
-        # Upload video via API v1.1
-        m1 = api.media_upload(
-            VIDEO_OUTPUT,
-            media_category='tweet_video'
-        )
-
+        m1 = api.media_upload(VIDEO_OUTPUT, media_category='tweet_video')
         media_id = m1.media_id_string
         print(f"Video uploaded successfully. Media ID: {media_id}")
 
-        # Create tweet via API v2
-        tweet_text = f"🎵 {song_title} by {artist}\n#Trending #Music #NowPlaying"
-        response = client.create_tweet(
-            text=tweet_text,
-            media_ids=[media_id]
-        )
-
+        tweet_text = f"{song_title} by {artist}\nTrending Music"
+        response = client.create_tweet(text=tweet_text, media_ids=[media_id])
         tweet_id = response.data['id']
         print(f"Video tweeted successfully: https://twitter.com/user/status/{tweet_id}")
     except tweepy.errors.TweepyException as e:
@@ -164,12 +152,10 @@ def main():
 
         image_path = generate_lyric_image(song_title, artist)
 
-        # Download audio preview
         response = requests.get(audio_preview)
         with open(AUDIO_OUTPUT, "wb") as f:
             f.write(response.content)
 
-        # Create video
         video_path = create_video(image_path, AUDIO_OUTPUT, VIDEO_OUTPUT)
         if video_path:
             tweet_video(song_title, artist)
