@@ -134,9 +134,9 @@ def generate_lyric_image(song_title, artist, lyrics, album_cover_url):
         img = Image.new("RGB", (1200, 675), color=random.choice(PASTEL_COLORS))
         draw = ImageDraw.Draw(img)
 
-        title_font = adjust_font_size(draw, song_title, 800, 60, "arialbd.ttf", 45)
-        artist_font = adjust_font_size(draw, artist, 800, 40, "arial.ttf", 30)
-        lyrics_font = adjust_font_size(draw, selected_lyrics, 1000, 400, "arialbd.ttf", 70)
+        title_font = adjust_font_size(draw, song_title, 800, 60, "/usr/share/fonts/truetype/ubuntu/Ubuntu-B.ttf", 45)
+        artist_font = adjust_font_size(draw, artist, 800, 40, "/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf", 30)
+        lyrics_font = adjust_font_size(draw, selected_lyrics, 1000, 400, "/usr/share/fonts/truetype/ubuntu/Ubuntu-B.ttf", 70)
 
         draw.text((50, 50), song_title, font=title_font, fill="black")
         draw.text((50, 120), artist, font=artist_font, fill="grey")
@@ -147,7 +147,7 @@ def generate_lyric_image(song_title, artist, lyrics, album_cover_url):
             album_cover = Image.open(BytesIO(response.content)).resize((150, 150))
             img.paste(album_cover, (50, 500))
 
-        draw.text((1050, 630), "@lyric_loops", font=ImageFont.truetype("arial.ttf", 25), fill="black")
+        draw.text((1050, 630), "@lyric_loops", font=ImageFont.truetype("/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf", 25), fill="black")
         img.save(IMAGE_OUTPUT, format="PNG")
         print("✅ Image saved successfully.")
         return IMAGE_OUTPUT, selected_lyrics
