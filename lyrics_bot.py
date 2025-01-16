@@ -2,14 +2,19 @@ import requests
 import tweepy
 import os
 import random
+import time
 from dotenv import load_dotenv
-from PIL import Image, ImageDraw, ImageFont, ImageOps
+from moviepy.audio.io.AudioFileClip import AudioFileClip
+from moviepy.video.VideoClip import ImageClip
+from moviepy.audio.AudioClip import concatenate_audioclips
+from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
+import re
 
-# ✅ Load Environment Variables
+# Load Environment Variables
 load_dotenv()
 
-# ✅ API Credentials
+# API Credentials
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
 ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
@@ -17,181 +22,163 @@ ACCESS_TOKEN_SECRET = os.getenv("ACCESS_TOKEN_SECRET")
 BEARER_TOKEN = os.getenv("BEARER_TOKEN")
 LASTFM_API_KEY = os.getenv("LASTFM_API_KEY")
 
-# ✅ Authenticate with Twitter API v2 (OAuth2)
+# Authenticate Twitter API v1.1 (Media Uploads)
+auth_v1 = tweepy.OAuth1UserHandler(API_KEY, API_SECRET, ACCESS_TOKEN, ACCESS_TOKEN_SECRET)
+api = tweepy.API(auth_v1)
+
+# Authenticate Twitter API v2 (Tweet Creation)
 client = tweepy.Client(
-    bearer_token=BEARER_TOKEN,
     consumer_key=API_KEY,
     consumer_secret=API_SECRET,
     access_token=ACCESS_TOKEN,
-    access_token_secret=ACCESS_TOKEN_SECRET
+    access_token_secret=ACCESS_TOKEN_SECRET,
+    bearer_token=BEARER_TOKEN
 )
 
-# ✅ Authenticate with Tweepy v1.1 for Media Uploads
-auth = tweepy.OAuth1UserHandler(API_KEY, API_SECRET, ACCESS_TOKEN, ACCESS_TOKEN_SECRET)
-api = tweepy.API(auth)
-
-# ✅ Output image path
+# Paths
+VIDEO_OUTPUT = "song_video.mp4"
+AUDIO_OUTPUT = "audio_preview.m4a"
 IMAGE_OUTPUT = "lyric_image.png"
 
-# ✅ Soft Pastel Background Colors
-PASTEL_COLORS = [
-    "#FFF8E1", "#FCE4EC", "#E8F5E9", "#E3F2FD", "#F3E5F5",
-    "#D1C4E9", "#FFECB3", "#FFCCBC", "#CFD8DC"
-]
-
-# ------------------------------------------------
-# ✅ Fetch Random Song from Last.fm
-# ------------------------------------------------
-def fetch_random_song_from_lastfm():
+# Fetch Trending Song
+def fetch_trending_song():
     try:
         url = f"http://ws.audioscrobbler.com/2.0/?method=chart.gettoptracks&api_key={LASTFM_API_KEY}&format=json"
         response = requests.get(url)
         response.raise_for_status()
         data = response.json()
         tracks = data.get("tracks", {}).get("track", [])
-        
-        if not tracks:
-            print("❌ No tracks found.")
-            return None, None
-        
         random_track = random.choice(tracks)
         song_title = random_track.get("name", "Unknown Song")
         artist = random_track.get("artist", {}).get("name", "Unknown Artist")
-        print(f"✅ Selected Song: {song_title} by {artist}")
+        print(f"Selected Song: {song_title} by {artist}")
         return song_title, artist
     except Exception as e:
-        print(f"❌ Error fetching song: {e}")
+        print(f"Error fetching song: {e}")
         return None, None
 
-# ------------------------------------------------
-# ✅ Fetch Lyrics
-# ------------------------------------------------
-def fetch_lyrics(song_title, artist):
-    sources = [
-        f"https://api.lyrics.ovh/v1/{artist}/{song_title}",
-        f"http://api.chartlyrics.com/apiv1.asmx/SearchLyricDirect?artist={artist}&song={song_title}",
-        f"http://ws.audioscrobbler.com/2.0/?method=track.getInfo&api_key={LASTFM_API_KEY}&artist={artist}&track={song_title}&format=json"
-    ]
-    
-    for source in sources:
-        try:
-            response = requests.get(source)
-            response.raise_for_status()
-            data = response.json()
-            lyrics = data.get("lyrics") or data.get("track", {}).get("wiki", {}).get("summary")
-            if lyrics:
-                print("✅ Lyrics fetched successfully.")
-                return lyrics
-        except Exception as e:
-            print(f"❌ Error fetching lyrics from {source}: {e}")
-    print("❌ All lyric sources failed.")
-    return None
-
-# ------------------------------------------------
-# ✅ Fetch Album Cover
-# ------------------------------------------------
+# Fetch Album Cover
 def fetch_album_cover(song_title, artist):
-    sources = [
-        f"https://itunes.apple.com/search?term={artist} {song_title}&media=music",
-        f"https://api.deezer.com/search?q={artist} {song_title}",
-        f"http://ws.audioscrobbler.com/2.0/?method=track.getInfo&api_key={LASTFM_API_KEY}&artist={artist}&track={song_title}&format=json"
-    ]
-    
-    for source in sources:
-        try:
-            response = requests.get(source)
-            response.raise_for_status()
-            data = response.json()
-            
-            # iTunes API
-            if "results" in data and data["results"]:
-                return data["results"][0].get("artworkUrl100")
-            
-            # Deezer API
-            if "data" in data and data["data"]:
-                return data["data"][0].get("album", {}).get("cover_big")
-            
-            # Last.fm API
-            if "track" in data:
-                album_images = data["track"].get("album", {}).get("image", [])
-                if album_images:
-                    return album_images[-1].get("#text")
-        except Exception as e:
-            print(f"❌ Error fetching album cover from {source}: {e}")
-    
-    print("❌ All album cover sources failed.")
-    return None
-
-# ------------------------------------------------
-# ✅ Dynamic Font Adjustment
-# ------------------------------------------------
-def adjust_font_size(draw, text, max_width, max_height, font_path, start_size=55):
-    font_size = start_size
-    while font_size > 10:
-        font = ImageFont.truetype(font_path, font_size)
-        text_bbox = draw.multiline_textbbox((0, 0), text, font=font)
-        text_width = text_bbox[2] - text_bbox[0]
-        text_height = text_bbox[3] - text_bbox[1]
-        if text_width <= max_width and text_height <= max_height:
-            return font
-        font_size -= 2
-    return ImageFont.truetype(font_path, 10)
-
-# ------------------------------------------------
-# ✅ Generate Lyric Image
-# ------------------------------------------------
-def generate_lyric_image(song_title, artist, lyrics, album_cover_url):
     try:
-        lines = [line.strip() for line in lyrics.split('\n') if line.strip()]
-        selected_lyrics = '\n'.join(random.sample(lines, min(len(lines), 2)))
+        url = f"https://itunes.apple.com/search?term={artist} {song_title}&media=music"
+        response = requests.get(url)
+        response.raise_for_status()
+        data = response.json()
+        return data['results'][0].get('artworkUrl100')
+    except Exception as e:
+        print(f"Error fetching album cover: {e}")
+        return None
 
-        img = Image.new("RGB", (1200, 675), color=random.choice(PASTEL_COLORS))
+# Fetch Audio Preview
+def fetch_audio_preview(song_title, artist):
+    try:
+        url = f"https://itunes.apple.com/search?term={artist} {song_title}&media=music"
+        response = requests.get(url)
+        response.raise_for_status()
+        data = response.json()
+        return data['results'][0].get('previewUrl')
+    except Exception as e:
+        print(f"Error fetching audio preview: {e}")
+        return None
+
+# Generate Lyric Image
+def generate_lyric_image(song_title, artist):
+    try:
+        # Create an image with the song title and artist
+        img = Image.new("RGB", (1280, 720), color="white")
         draw = ImageDraw.Draw(img)
 
-        title_font = adjust_font_size(draw, song_title, 800, 60, "arialbd.ttf", 45)
-        artist_font = adjust_font_size(draw, artist, 800, 40, "arial.ttf", 30)
-        lyrics_font = adjust_font_size(draw, selected_lyrics, 1000, 400, "arialbd.ttf", 70)
+        # Use a font available on Ubuntu
+        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 60)
+        draw.text((100, 100), f"{song_title}\nby {artist}", fill="black", font=font)
 
-        draw.text((50, 50), song_title, font=title_font, fill="black")
-        draw.text((50, 120), artist, font=artist_font, fill="grey")
-        draw.multiline_text((600, 350), selected_lyrics, font=lyrics_font, fill="black", anchor="mm", align="center")
-
-        if album_cover_url and isinstance(album_cover_url, str):
-            response = requests.get(album_cover_url)
-            album_cover = Image.open(BytesIO(response.content)).resize((150, 150))
-            img.paste(album_cover, (50, 500))
-
-        draw.text((1050, 630), "@lyric_loops", font=ImageFont.truetype("arial.ttf", 25), fill="black")
-        img.save(IMAGE_OUTPUT, format="PNG")
-        print("✅ Image saved successfully.")
-        return IMAGE_OUTPUT, selected_lyrics
+        img.save(IMAGE_OUTPUT)
+        print(f"Lyric image saved: {IMAGE_OUTPUT}")
+        return IMAGE_OUTPUT
     except Exception as e:
-        print(f"❌ Error generating image: {e}")
-        return None, None
+        print(f"Error generating lyric image: {e}")
+        return None
 
-# ------------------------------------------------
-# ✅ Post on Twitter
-# ------------------------------------------------
-def post_lyric_image_v2(image_path, song_title, artist, lyrics_excerpt):
-    # Preprocess lyrics_excerpt to replace newlines with spaces
-    clean_lyrics = lyrics_excerpt.replace('\n', ' ')
-    
-    # Build the tweet text
-    tweet_text = f"🎵 {clean_lyrics} - {artist} #Music #Lyrics #PopCulture"
-    
-    # Upload media and post the tweet
-    media = api.media_upload(image_path)
-    client.create_tweet(text=tweet_text, media_ids=[media.media_id_string])
-    print("✅ Tweet posted successfully.")
+# Create Video with Audio Hook
+def process_audio(audio_path, target_duration=30):
+    audio_clip = AudioFileClip(audio_path)
+    if audio_clip.duration > target_duration:
+        audio_clip = audio_clip.subclipped(0, target_duration)
+    else:
+        loops = int(target_duration // audio_clip.duration) + 1
+        audio_clips = [audio_clip] * loops
+        audio_clip = concatenate_audioclips(audio_clips).subclipped(0, target_duration)
+    return audio_clip
 
-# ------------------------------------------------
-# ✅ Main Execution
-# ------------------------------------------------
+def create_video(image_path, audio_path, output_path, duration=30):
+    try:
+        image_clip = ImageClip(image_path).set_duration(duration).resize(height=720, width=1280)
+        audio_clip = process_audio(audio_path, duration)
+        video_clip = image_clip.set_audio(audio_clip)
+        video_clip.write_videofile(output_path, codec="libx264", fps=24)
+        print(f"Video created successfully at 1280x720 resolution.")
+        return output_path
+    except Exception as e:
+        print(f"Error creating video: {e}")
+        return None
+
+# Tweet Video
+def tweet_video(song_title, artist):
+    try:
+        # Upload video via API v1.1
+        m1 = api.media_upload(
+            VIDEO_OUTPUT,
+            media_category='tweet_video'
+        )
+
+        media_id = m1.media_id_string
+        print(f"Video uploaded successfully. Media ID: {media_id}")
+
+        # Create tweet via API v2
+        tweet_text = f"🎵 {song_title} by {artist}\n#Trending #Music #NowPlaying"
+        response = client.create_tweet(
+            text=tweet_text,
+            media_ids=[media_id]
+        )
+
+        tweet_id = response.data['id']
+        print(f"Video tweeted successfully: https://twitter.com/user/status/{tweet_id}")
+    except tweepy.errors.TweepyException as e:
+        print(f"Tweepy error tweeting video: {e}")
+    except Exception as e:
+        print(f"Unexpected error tweeting video: {e}")
+
+# Main Execution
+def main():
+    while True:
+        try:
+            song_title, artist = fetch_trending_song()
+            if not song_title or not artist:
+                raise Exception("Failed to fetch song details.")
+
+            album_cover = fetch_album_cover(song_title, artist)
+            audio_preview = fetch_audio_preview(song_title, artist)
+
+            if not album_cover or not audio_preview:
+                raise Exception("Failed to fetch album cover or audio preview.")
+
+            image_path = generate_lyric_image(song_title, artist)
+
+            # Download audio preview
+            response = requests.get(audio_preview)
+            with open(AUDIO_OUTPUT, "wb") as f:
+                f.write(response.content)
+
+            # Create video
+            video_path = create_video(image_path, AUDIO_OUTPUT, VIDEO_OUTPUT)
+            if video_path:
+                tweet_video(song_title, artist)
+
+        except Exception as e:
+            print(f"Error: {e}")
+
+        print("Waiting 2 hours before the next tweet...")
+        time.sleep(7200)
+
 if __name__ == "__main__":
-    song_title, artist = fetch_random_song_from_lastfm()
-    lyrics = fetch_lyrics(song_title, artist)
-    cover_url = fetch_album_cover(song_title, artist)
-    if lyrics:
-        image, selected_lyrics = generate_lyric_image(song_title, artist, lyrics, cover_url)
-        if image:
-            post_lyric_image_v2(image, song_title, artist, selected_lyrics)
+    main()
