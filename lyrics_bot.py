@@ -147,8 +147,13 @@ lyrics_font = adjust_font_size(draw, selected_lyrics, 1000, 400, "./fonts/arialb
 # Fallback to default
 try:
     title_font = ImageFont.truetype("./fonts/arialbd.ttf", 45)
+    artist_font = ImageFont.truetype("./fonts/arial.ttf", 30)
+    lyrics_font = ImageFont.truetype("./fonts/arialbd.ttf", 70)
 except IOError:
+    # Fallback to the default font if the specified fonts are not found
     title_font = ImageFont.load_default()
+    artist_font = ImageFont.load_default()
+    lyrics_font = ImageFont.load_default()
 
 
 
