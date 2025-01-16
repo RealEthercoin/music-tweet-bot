@@ -132,48 +132,48 @@ def adjust_font_size(draw, text, max_width, max_height, font_path, start_size=55
 # ------------------------------------------------
 def generate_lyric_image(song_title, artist, lyrics, album_cover_url):
     try:
+        # Extract lines from the lyrics and randomly select a few
         lines = [line.strip() for line in lyrics.split('\n') if line.strip()]
         selected_lyrics = '\n'.join(random.sample(lines, min(len(lines), 2)))
 
+        # Create the base image
         img = Image.new("RGB", (1200, 675), color=random.choice(PASTEL_COLORS))
         draw = ImageDraw.Draw(img)
 
-        # Updated font paths
+        # Load fonts with a fallback mechanism
+        try:
+            title_font = ImageFont.truetype("./fonts/arialbd.ttf", 45)
+            artist_font = ImageFont.truetype("./fonts/arial.ttf", 30)
+            lyrics_font = ImageFont.truetype("./fonts/arialbd.ttf", 70)
+        except IOError:
+            # Fallback to default font if specified fonts are not found
+            title_font = ImageFont.load_default()
+            artist_font = ImageFont.load_default()
+            lyrics_font = ImageFont.load_default()
 
-title_font = adjust_font_size(draw, song_title, 800, 60, "./fonts/arialbd.ttf", 45)
-artist_font = adjust_font_size(draw, artist, 800, 40, "./fonts/arial.ttf", 30)
-lyrics_font = adjust_font_size(draw, selected_lyrics, 1000, 400, "./fonts/arialbd.ttf", 70)
-
-# Fallback to default
-try:
-    title_font = ImageFont.truetype("./fonts/arialbd.ttf", 45)
-    artist_font = ImageFont.truetype("./fonts/arial.ttf", 30)
-    lyrics_font = ImageFont.truetype("./fonts/arialbd.ttf", 70)
-except IOError:
-    # Fallback to the default font if the specified fonts are not found
-    title_font = ImageFont.load_default()
-    artist_font = ImageFont.load_default()
-    lyrics_font = ImageFont.load_default()
-
-
-
-
+        # Draw text on the image
         draw.text((50, 50), song_title, font=title_font, fill="black")
         draw.text((50, 120), artist, font=artist_font, fill="grey")
         draw.multiline_text((600, 350), selected_lyrics, font=lyrics_font, fill="black", anchor="mm", align="center")
 
+        # Add the album cover if available
         if album_cover_url and isinstance(album_cover_url, str):
             response = requests.get(album_cover_url)
             album_cover = Image.open(BytesIO(response.content)).resize((150, 150))
             img.paste(album_cover, (50, 500))
 
+        # Add watermark or branding text
         draw.text((1050, 630), "@lyric_loops", font=ImageFont.truetype("/usr/share/fonts/truetype/msttcorefonts/arialbd.ttf", 25), fill="black")
+
+        # Save the generated image
         img.save(IMAGE_OUTPUT, format="PNG")
         print("✅ Image saved successfully.")
         return IMAGE_OUTPUT, selected_lyrics
+
     except Exception as e:
         print(f"❌ Error generating image: {e}")
         return None, None
+
 
 # ------------------------------------------------
 # ✅ Process Audio
