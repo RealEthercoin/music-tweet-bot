@@ -2,13 +2,13 @@ import requests
 import tweepy
 import os
 import random
-import time
 from dotenv import load_dotenv
+from PIL import Image, ImageDraw, ImageFont
+from io import BytesIO
 from moviepy.audio.io.AudioFileClip import AudioFileClip
 from moviepy.video.VideoClip import ImageClip
 from moviepy.audio.AudioClip import concatenate_audioclips
-from PIL import Image, ImageDraw, ImageFont
-from io import BytesIO
+import time
 import re
 
 # Load Environment Variables
@@ -113,9 +113,9 @@ def process_audio(audio_path, target_duration=30):
 def create_video(image_path, audio_path, output_path, duration=30):
     try:
         print(f"Creating video with image: {image_path}, audio: {audio_path}")
-        image_clip = ImageClip(image_path).with_duration(duration).resize(height=720, width=1280)
+        image_clip = ImageClip(image_path).set_duration(duration).resize((1280, 720))
         audio_clip = process_audio(audio_path, duration)
-        video_clip = image_clip.with_audio(audio_clip)
+        video_clip = image_clip.set_audio(audio_clip)
         video_clip.write_videofile(output_path, codec="libx264", fps=24)
         print(f"Video created successfully at 1280x720 resolution.")
         return output_path
