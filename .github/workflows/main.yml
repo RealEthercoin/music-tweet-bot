@@ -1,4 +1,4 @@
-name: Lyric Bot (Linux Runner)
+name: Lyric Bot (Windows Runner)
 
 on:
   schedule:
@@ -8,7 +8,7 @@ on:
 
 jobs:
   run-lyric-bot:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     
     steps:
       - name: Check out code
