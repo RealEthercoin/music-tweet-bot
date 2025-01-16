@@ -138,9 +138,17 @@ def generate_lyric_image(song_title, artist, lyrics, album_cover_url):
         img = Image.new("RGB", (1200, 675), color=random.choice(PASTEL_COLORS))
         draw = ImageDraw.Draw(img)
 
-        title_font = adjust_font_size(draw, song_title, 800, 60, "arialbd.ttf", 45)
-        artist_font = adjust_font_size(draw, artist, 800, 40, "arial.ttf", 30)
-        lyrics_font = adjust_font_size(draw, selected_lyrics, 1000, 400, "arialbd.ttf", 70)
+        # Updated font paths
+title_font = adjust_font_size(draw, song_title, 800, 60, "./fonts/arialbd.ttf", 45)
+artist_font = adjust_font_size(draw, artist, 800, 40, "./fonts/arial.ttf", 30)
+lyrics_font = adjust_font_size(draw, selected_lyrics, 1000, 400, "./fonts/arialbd.ttf", 70)
+
+# Fallback to default
+try:
+    title_font = ImageFont.truetype("./fonts/arialbd.ttf", 45)
+except IOError:
+    title_font = ImageFont.load_default()
+
 
 
         draw.text((50, 50), song_title, font=title_font, fill="black")
