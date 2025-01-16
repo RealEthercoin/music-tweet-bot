@@ -44,7 +44,8 @@ IMAGE_OUTPUT = "lyric_image.png"
 def fetch_trending_song():
     try:
         url = f"http://ws.audioscrobbler.com/2.0/?method=chart.gettoptracks&api_key={LASTFM_API_KEY}&format=json"
-        response = requests.get(url)
+        print(f"Fetching trending song from LastFM API: {url}")
+        response = requests.get(url, timeout=10)  # Set a timeout of 10 seconds
         response.raise_for_status()
         data = response.json()
         tracks = data.get("tracks", {}).get("track", [])
@@ -53,6 +54,9 @@ def fetch_trending_song():
         artist = random_track.get("artist", {}).get("name", "Unknown Artist")
         print(f"Selected Song: {song_title} by {artist}")
         return song_title, artist
+    except requests.Timeout:
+        print("Error: Request to LastFM API timed out.")
+        return None, None
     except Exception as e:
         print(f"Error fetching song: {e}")
         return None, None
@@ -73,10 +77,14 @@ def fetch_album_cover(song_title, artist):
 def fetch_audio_preview(song_title, artist):
     try:
         url = f"https://itunes.apple.com/search?term={artist} {song_title}&media=music"
-        response = requests.get(url)
+        print(f"Fetching audio preview from iTunes API: {url}")
+        response = requests.get(url, timeout=10)  # Set a timeout
         response.raise_for_status()
         data = response.json()
         return data['results'][0].get('previewUrl')
+    except requests.Timeout:
+        print("Error: Request to iTunes API timed out.")
+        return None
     except Exception as e:
         print(f"Error fetching audio preview: {e}")
         return None
@@ -112,6 +120,7 @@ def process_audio(audio_path, target_duration=30):
 
 def create_video(image_path, audio_path, output_path, duration=30):
     try:
+        print(f"Creating video with image: {image_path}, audio: {audio_path}")
         image_clip = ImageClip(image_path).set_duration(duration).resize(height=720, width=1280)
         audio_clip = process_audio(audio_path, duration)
         video_clip = image_clip.set_audio(audio_clip)
@@ -125,22 +134,14 @@ def create_video(image_path, audio_path, output_path, duration=30):
 # Tweet Video
 def tweet_video(song_title, artist):
     try:
-        # Upload video via API v1.1
-        m1 = api.media_upload(
-            VIDEO_OUTPUT,
-            media_category='tweet_video'
-        )
+        print(f"Uploading video: {VIDEO_OUTPUT}")
+        m1 = api.media_upload(VIDEO_OUTPUT, media_category='tweet_video')
 
         media_id = m1.media_id_string
         print(f"Video uploaded successfully. Media ID: {media_id}")
 
-        # Create tweet via API v2
         tweet_text = f"🎵 {song_title} by {artist}\n#Trending #Music #NowPlaying"
-        response = client.create_tweet(
-            text=tweet_text,
-            media_ids=[media_id]
-        )
-
+        response = client.create_tweet(text=tweet_text, media_ids=[media_id])
         tweet_id = response.data['id']
         print(f"Video tweeted successfully: https://twitter.com/user/status/{tweet_id}")
     except tweepy.errors.TweepyException as e:
@@ -150,28 +151,35 @@ def tweet_video(song_title, artist):
 
 # Main Execution
 def main():
+    print("Starting the bot...")
     while True:
         try:
+            print("Fetching new song...")
             song_title, artist = fetch_trending_song()
             if not song_title or not artist:
-                raise Exception("Failed to fetch song details.")
+                print("No song fetched. Skipping to the next iteration.")
+                continue
 
             album_cover = fetch_album_cover(song_title, artist)
             audio_preview = fetch_audio_preview(song_title, artist)
 
             if not album_cover or not audio_preview:
-                raise Exception("Failed to fetch album cover or audio preview.")
+                print("Failed to fetch album cover or audio preview. Skipping...")
+                continue
 
+            print(f"Generating lyric image for {song_title} by {artist}")
             image_path = generate_lyric_image(song_title, artist)
 
             # Download audio preview
-            response = requests.get(audio_preview)
+            print(f"Downloading audio preview: {audio_preview}")
+            response = requests.get(audio_preview, timeout=10)
             with open(AUDIO_OUTPUT, "wb") as f:
                 f.write(response.content)
 
-            # Create video
+            print("Creating video...")
             video_path = create_video(image_path, AUDIO_OUTPUT, VIDEO_OUTPUT)
             if video_path:
+                print("Tweeting video...")
                 tweet_video(song_title, artist)
 
         except Exception as e:
