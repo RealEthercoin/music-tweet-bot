@@ -55,8 +55,7 @@ AUDIO_OUTPUT = "mj_audio_preview.mp3"
 VIDEO_OUTPUT = "mj_lyric_video.mp4"
 
 # ✅ Background Colors
-PASTEL_COLORS = ["#FFF8E1", "#FCE4EC", "#E8F5E9", "#E3F2FD", "#F3E5F5", "#FDF5DC", "#FFE5E8", "#D7F4FF", "#EDE7F6", "#DFFFE5", "#FFE7D9", "#FFDDE0", "#E0F7FA", "#FFF9E5", "#F2F2F2
-"]
+PASTEL_COLORS = ["#FFF8E1", "#FCE4EC", "#E8F5E9", "#E3F2FD", "#F3E5F5", "#FDF5DC", "#FFE5E8", "#D7F4FF", "#EDE7F6", "#DFFFE5", "#FFE7D9", "#FFDDE0", "#E0F7FA", "#FFF9E5", "#F2F2F2"]
 
 # ------------------------------------------------
 # ✅ Fetch Random Michael Jackson Song
