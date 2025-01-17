@@ -13,6 +13,7 @@ from moviepy.audio.AudioClip import concatenate_audioclips
 from moviepy.video.compositing.CompositeVideoClip import CompositeVideoClip
 import time
 import re
+import lyricsgenius
 
 # Fix UnicodeEncodeError on Windows
 sys.stdout.reconfigure(encoding='utf-8')
@@ -30,6 +31,8 @@ CLIENT_ID = os.getenv("CLIENT_ID")
 CLIENT_SECRET = os.getenv("CLIENT_SECRET")
 REDIRECT_URI = os.getenv("REDIRECT_URI")
 LASTFM_API_KEY = os.getenv("LASTFM_API_KEY")
+GENIUS_API_TOKEN = os.getenv("GENIUS_API_TOKEN")  # Store in environment variables for security
+genius = lyricsgenius.Genius(GENIUS_API_TOKEN)
 
 # ✅ Authenticate Twitter API v1.1 (Media Uploads)
 auth_v1 = tweepy.OAuth1UserHandler(
@@ -76,13 +79,24 @@ def fetch_random_mj_song():
 # ------------------------------------------------
 def fetch_lyrics(song_title, artist):
     try:
+        # Primary API: Lyrics.ovh
         response = requests.get(f"https://api.lyrics.ovh/v1/{artist}/{song_title}")
         response.raise_for_status()
         data = response.json()
         return data.get("lyrics", "Lyrics not found")
     except Exception as e:
-        print(f"❌ Error fetching lyrics: {e}")
-    return None
+        print(f"❌ Error fetching lyrics from Lyrics.ovh: {e}")
+        print("⚠️ Falling back to Genius API...")
+        # Fallback: Genius API
+        try:
+            song = genius.search_song(song_title, artist)
+            if song and song.lyrics:
+                return song.lyrics
+            else:
+                return "Lyrics not found on Genius API"
+        except Exception as genius_error:
+            print(f"❌ Error fetching lyrics from Genius API: {genius_error}")
+            return "Lyrics not found"
 
 # ------------------------------------------------
 # ✅ Fetch Album Cover
