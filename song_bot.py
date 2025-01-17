@@ -1,9 +1,13 @@
+import sys
 import os
 import random
 import tweepy
 from dotenv import load_dotenv
 from lyricsgenius import Genius
 import requests
+
+# Fix UnicodeEncodeError on Windows
+sys.stdout.reconfigure(encoding='utf-8')
 
 # ✅ Load Environment Variables
 load_dotenv()
