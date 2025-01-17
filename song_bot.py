@@ -35,7 +35,7 @@ client = tweepy.Client(
 def fetch_random_song_lastfm():
     try:
         url = f"http://ws.audioscrobbler.com/2.0/?method=artist.gettoptracks&artist=Michael+Jackson&api_key={LASTFM_API_KEY}&format=json"
-        response = requests.get(url, timeout=15)
+        response = requests.get(url)
         response.raise_for_status()
         tracks = response.json().get("toptracks", {}).get("track", [])
 
@@ -48,38 +48,34 @@ def fetch_random_song_lastfm():
         song_title = random_track.get("name")
         print(f"✅ Selected Song: {song_title}")
         return song_title
-    except requests.exceptions.RequestException as e:
+    except Exception as e:
         print(f"❌ Error fetching song from Last.fm: {e}")
         return None
 
 # ✅ Fetch Random Michael Jackson Lyrics from Genius API
-def fetch_genius_lyrics(genius_api_token, song_title, retries=3, delay=5):
-    for attempt in range(retries):
-        try:
-            genius = Genius(genius_api_token, timeout=15)
-            song = genius.search_song(song_title, "Michael Jackson")
+def fetch_genius_lyrics(genius_api_token, song_title):
+    try:
+        genius = Genius(genius_api_token)
+        song = genius.search_song(song_title, "Michael Jackson")
 
-            if not song or not song.lyrics:
-                print("❌ No lyrics found in the Genius API.")
-                return None
-
-            # Split lyrics into lines, excluding empty lines and metadata
-            lines = [line.strip() for line in song.lyrics.split("\n") if line.strip() and not line.startswith("[")]
-
-            if not lines:
-                print("❌ No valid lyrics lines found.")
-                return None
-
-            # Randomly select 1-2 lines
-            selected_lines = random.sample(lines, min(len(lines), 2))
-            return "\n".join(selected_lines)
-        except requests.exceptions.RequestException as e:
-            print(f"⚠️ Genius API request failed: {e}. Retrying in {delay} seconds...")
-            time.sleep(delay)
-        except Exception as e:
-            print(f"❌ Error fetching lyrics from Genius API: {e}")
+        if not song or not song.lyrics:
+            print("❌ No lyrics found in the Genius API.")
             return None
-    return None
+
+        # Split lyrics into lines, excluding empty lines and metadata
+        lines = [line.strip() for line in song.lyrics.split("\n") if line.strip() and not line.startswith("[")]
+
+        if not lines:
+            print("❌ No valid lyrics lines found.")
+            return None
+
+        # Randomly select 1-2 lines
+        selected_lines = random.sample(lines, min(len(lines), 2))
+
+        return "\n".join(selected_lines)
+    except Exception as e:
+        print(f"❌ Error fetching lyrics from Genius API: {e}")
+        return None
 
 # ✅ Fetch Lyrics Dynamically
 def fetch_random_lyrics():
