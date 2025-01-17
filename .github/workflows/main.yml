@@ -32,5 +32,6 @@ jobs:
           ACCESS_TOKEN_SECRET: ${{ secrets.ACCESS_TOKEN_SECRET }}
           BEARER_TOKEN: ${{ secrets.BEARER_TOKEN }}
           LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
+          GENIUS_API_TOKEN: ${{ secrets.GENIUS_API_TOKEN }}
         run: |
-          python lyrics_bot.py
+          python song_bot.py
