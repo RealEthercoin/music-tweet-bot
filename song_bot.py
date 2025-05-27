@@ -62,21 +62,10 @@ def save_song_history(history):
 
 # Normalize song title to remove remix indicators
 def normalize_song_title(title):
-    # Remove common remix keywords and parentheses content
     remix_keywords = r'\b(Remix|Mix|Rehearsal|Live|Demo|Extended|Redux|Version|Edit|C\.V\.G\.|Ghosts|Multitrack)\b|\([^)]*\)'
-    normalized = re.sub(remix_keywords, '', title, flags=re.IGNORECASE).strip()
-    # Remove extra spaces
-    normalized = ' '.join(normalized.split())
-    return normalized if normalized else title
-
-# Check if a song is a remix or alternate version
-def is_remix_or_alternate(title):
-    remix_indicators = [
-        'remix', 'mix', 'rehearsal', 'live', 'demo', 'extended', 'redux',
-        'version', 'edit', 'c.v.g.', 'ghosts', 'multitrack'
-    ]
-    title_lower = title.lower()
-    return any(indicator in title_lower for indicator in remix_indicators)
+    title = re.sub(remix_keywords, '', title, flags=re.IGNORECASE)
+    title = re.sub(r'[^A-Za-z0-9 ]+', '', title)  # Remove punctuation/symbols
+    return ' '.join(title.lower().strip().split())
 
 # Fetch Random Michael Jackson Song from MusicBrainz (Avoid Repeats and Remixes)
 def fetch_random_song_musicbrainz(max_attempts=10):
@@ -87,65 +76,57 @@ def fetch_random_song_musicbrainz(max_attempts=10):
             print(f"❌ Could not find artist '{artist_name}' on MusicBrainz.")
             return None
 
-        # Get the first artist's ID
         artist_id = results['artist-list'][0]['id']
         print(f"✅ Found Artist ID: {artist_id}")
 
-        # Load song history (normalized titles)
         song_history = load_song_history()
         print(f"📜 Song history contains {len(song_history)} songs.")
 
-        # Browse recordings by the artist
-        recordings_results = musicbrainzngs.browse_recordings(artist=artist_id, limit=100)
-        if not recordings_results or 'recording-list' not in recordings_results or not recordings_results['recording-list']:
-            print(f"❌ No songs found for {artist_name} on MusicBrainz.")
-            return None
+        # Get more recordings for more variety
+        recordings_results = musicbrainzngs.browse_recordings(
+            artist=artist_id,
+            includes=["releases"],
+            limit=500,  # Increased limit
+        )
 
-        recordings = recordings_results['recording-list']
-        # Filter out remixes and songs already in history
-        available_songs = [
-            r.get("title") for r in recordings
-            if r.get("title") and not is_remix_or_alternate(r.get("title"))
-            and normalize_song_title(r.get("title")) not in song_history
-        ]
+        recordings = recordings_results.get('recording-list', [])
+        available_songs = []
 
-        # If no available songs, try without remix filter or reset history
+        for r in recordings:
+            title = r.get("title", "").strip()
+            disambiguation = r.get("disambiguation", "").lower()
+            if not title:
+                continue
+
+            normalized = normalize_song_title(title)
+            if normalized.lower() in song_history:
+                continue
+
+            # Skip if the disambiguation mentions remix/etc
+            if is_remix_or_alternate(disambiguation):
+                continue
+
+            # Also skip title-based indicators
+            if is_remix_or_alternate(title):
+                continue
+
+            available_songs.append((title, normalized))
+
         if not available_songs:
-            print("⚠️ No new non-remix songs available. Trying all songs.")
-            available_songs = [
-                r.get("title") for r in recordings
-                if r.get("title") and normalize_song_title(r.get("title")) not in song_history
-            ]
-            if not available_songs:
-                print("⚠️ All songs have been used. Resetting history.")
-                song_history.clear()
-                save_song_history(song_history)
-                available_songs = [
-                    r.get("title") for r in recordings
-                    if r.get("title") and not is_remix_or_alternate(r.get("title"))
-                ]
-                if not available_songs:
-                    available_songs = [r.get("title") for r in recordings if r.get("title")]
+            print("⚠️ No new clean songs available. Resetting history.")
+            song_history.clear()
+            save_song_history(song_history)
+            return fetch_random_song_musicbrainz()
 
-        # Try to select a new song
         for _ in range(max_attempts):
-            if not available_songs:
-                print("❌ No new songs available after filtering history.")
-                return None
-
-            song_title = random.choice(available_songs)
-            normalized_title = normalize_song_title(song_title)
-            if normalized_title not in song_history:
-                # Add normalized title to history
-                song_history.add(normalized_title)
+            song_title, normalized_title = random.choice(available_songs)
+            if normalized_title.lower() not in song_history:
+                song_history.add(normalized_title.lower())
                 save_song_history(song_history)
-                print(f"✅ Selected Song from MusicBrainz: {song_title} (Normalized: {normalized_title})")
+                print(f"✅ Selected Song: {song_title} (Normalized: {normalized_title})")
                 return song_title
 
-            # Remove the song from available_songs to avoid re-selecting
-            available_songs.remove(song_title)
-
-        print(f"❌ Could not find a new song after {max_attempts} attempts.")
+        print("❌ Could not find a new unique song.")
         return None
 
     except musicbrainzngs.WebServiceError as e:
