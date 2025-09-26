@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import os, re, time, random, requests, tweepy, sys
+import os, re, time, random, requests, tweepy, sys, json
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup
 
@@ -15,8 +15,11 @@ API_SECRET = os.getenv("API_SECRET")
 ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
 ACCESS_TOKEN_SECRET = os.getenv("ACCESS_TOKEN_SECRET")
 BEARER_TOKEN = os.getenv("BEARER_TOKEN")
+
 USED_SONGS_FILE = "used_songs.txt"
 NO_LYRICS_FILE = "no_lyrics_songs.txt"
+RECORDINGS_FILE = "recordings.json"
+
 SKIP_TITLE_KEYWORDS = [
     "remix", "version", "edit", "live", "instrumental", "karaoke",
     "demo", "bonus", "acoustic", "reprise", "mix"
@@ -27,6 +30,8 @@ if not all([API_KEY, API_SECRET, ACCESS_TOKEN, ACCESS_TOKEN_SECRET, BEARER_TOKEN
     print("❌ Missing one or more Twitter API credentials. Check your .env file.")
     sys.exit(1)
 print("✅ API credentials loaded successfully")
+
+# --- Helpers ---
 
 def normalize_title(title):
     return re.sub(r'\s+', ' ', re.sub(r'[^a-z0-9 ]+', '', title.lower())).strip()
@@ -59,7 +64,9 @@ def save_no_lyrics(filename, title_key):
         f.write(title_key + "\n")
     print(f"💾 Saved song to no_lyrics: {title_key}")
 
-def get_mj_recordings():
+# --- Recordings Fetch & Cache ---
+
+def fetch_and_cache_recordings():
     recordings = []
     offset = 0
     limit = 100
@@ -80,11 +87,27 @@ def get_mj_recordings():
             if offset + limit >= count:
                 break
             offset += limit
-            time.sleep(1)  # Respect MusicBrainz rate limit
+            time.sleep(1)  # respect MusicBrainz rate limit
         except Exception as e:
             print(f"❌ MusicBrainz API error: {e}")
             break
+    
+    with open(RECORDINGS_FILE, "w", encoding="utf-8") as f:
+        json.dump(recordings, f, ensure_ascii=False, indent=2)
+    print(f"💾 Saved {len(recordings)} recordings to {RECORDINGS_FILE}")
     return recordings
+
+def load_recordings():
+    if os.path.isfile(RECORDINGS_FILE):
+        with open(RECORDINGS_FILE, "r", encoding="utf-8") as f:
+            recordings = json.load(f)
+        print(f"📖 Loaded {len(recordings)} recordings from {RECORDINGS_FILE}")
+        return recordings
+    else:
+        print("⚠️ No cached recordings found, fetching fresh list")
+        return fetch_and_cache_recordings()
+
+# --- Lyrics fetching ---
 
 def fetch_lyrics_primary(artist, title):
     normalized_title = normalize_title(title)
@@ -132,6 +155,8 @@ def fetch_lyrics(artist, title):
         return lyrics
     return fetch_lyrics_fallback(artist, title)
 
+# --- Processing lyrics ---
+
 def clean_lyrics(raw):
     lines = []
     for line in raw.splitlines():
@@ -160,6 +185,8 @@ def select_snippet(lines):
     print(f"🔄 Fallback snippet: {tweet_text}")
     return tweet_text if len(tweet_text) <= 280 else None
 
+# --- Twitter ---
+
 def tweet_lyric(text):
     client = tweepy.Client(
         consumer_key=API_KEY,
@@ -177,21 +204,22 @@ def tweet_lyric(text):
         print(f"❌ Tweepy error: {e}")
         return False
 
+# --- Main ---
+
 def main():
     print("🚀 Starting MJ Tweet Bot")
     used_songs = load_used_songs(USED_SONGS_FILE)
     no_lyrics_songs = load_no_lyrics(NO_LYRICS_FILE)
     random.seed()
 
-    recordings = get_mj_recordings()
-
+    recordings = load_recordings()
     if not recordings:
-        print("❌ No recordings fetched. Exiting.")
+        print("❌ No recordings available. Exiting.")
         return
 
     print(f"🔢 Total recordings: {len(recordings)}")
 
-    # Check if reset is needed
+    # filter usable songs
     possible = []
     for title in recordings:
         if any(key in title.lower() for key in SKIP_TITLE_KEYWORDS):
@@ -205,21 +233,13 @@ def main():
         print("🔄 No more unused songs with lyrics available. Resetting used songs list.")
         open(USED_SONGS_FILE, "w").close()
         used_songs = set()
+        possible = [t for t in recordings if normalize_title(t) not in no_lyrics_songs]
 
-    random.shuffle(recordings)
+    random.shuffle(possible)
 
-    for title in recordings:
+    for title in possible:
         print(f"🎵 Processing song: {title}")
-        if any(key in title.lower() for key in SKIP_TITLE_KEYWORDS):
-            print(f"⏭️ Skipping {title} due to keywords")
-            continue
         key = normalize_title(title)
-        if key in used_songs:
-            print(f"⏭️ Skipping {title} as it was already used")
-            continue
-        if key in no_lyrics_songs:
-            print(f"⏭️ Skipping {title} as it has no lyrics")
-            continue
 
         lyrics = fetch_lyrics("Michael Jackson", title)
         if not lyrics:
