@@ -4,6 +4,8 @@
 import os, re, time, random, requests, tweepy, sys, json
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 load_dotenv()
 
@@ -15,6 +17,8 @@ API_SECRET = os.getenv("API_SECRET")
 ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
 ACCESS_TOKEN_SECRET = os.getenv("ACCESS_TOKEN_SECRET")
 BEARER_TOKEN = os.getenv("BEARER_TOKEN")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")  # Google Custom Search API key
+GOOGLE_CSE_ID = os.getenv("GOOGLE_CSE_ID")  # Google Custom Search Engine ID
 
 USED_SONGS_FILE = "used_songs.txt"
 NO_LYRICS_FILE = "no_lyrics_songs.txt"
@@ -26,8 +30,8 @@ SKIP_TITLE_KEYWORDS = [
 ]
 
 # Verify environment variables
-if not all([API_KEY, API_SECRET, ACCESS_TOKEN, ACCESS_TOKEN_SECRET, BEARER_TOKEN]):
-    print("❌ Missing one or more Twitter API credentials. Check your .env file.")
+if not all([API_KEY, API_SECRET, ACCESS_TOKEN, ACCESS_TOKEN_SECRET, BEARER_TOKEN, GOOGLE_API_KEY, GOOGLE_CSE_ID]):
+    print("❌ Missing one or more API credentials. Check your .env file.")
     sys.exit(1)
 print("✅ API credentials loaded successfully")
 
@@ -63,6 +67,51 @@ def save_no_lyrics(filename, title_key):
     with open(filename, "a", encoding="utf-8") as f:
         f.write(title_key + "\n")
     print(f"💾 Saved song to no_lyrics: {title_key}")
+
+# --- Image Fetching ---
+
+def fetch_mj_image(query="Michael Jackson"):
+    print(f"🖼️ Fetching image for query: {query}")
+    try:
+        # Initialize Google Custom Search API
+        service = build("customsearch", "v1", developerKey=GOOGLE_API_KEY)
+        result = service.cse().list(
+            q=query,
+            cx=GOOGLE_CSE_ID,
+            searchType="image",  # Restrict to image search
+            num=3  # Fetch 3 images to choose from
+        ).execute()
+        
+        images = result.get("items", [])
+        if not images:
+            print("⚠️ No images found via Google CSE")
+            return None
+        
+        # Select a random image
+        image_url = random.choice(images)["link"]
+        print(f"✅ Found image: {image_url}")
+        
+        # Download the image
+        img_resp = requests.get(image_url, headers={"User-Agent": USER_AGENT}, timeout=5)
+        img_resp.raise_for_status()
+        img_path = "temp_mj_image.jpg"
+        with open(img_path, "wb") as f:
+            f.write(img_resp.content)
+        print(f"💾 Downloaded image to {img_path}")
+        
+        # Verify file size (Twitter limit: 5MB)
+        if os.path.getsize(img_path) > 5 * 1024 * 1024:
+            print("⚠️ Image too large for Twitter (>5MB)")
+            os.remove(img_path)
+            return None
+            
+        return img_path
+    except HttpError as e:
+        print(f"❌ Google CSE API error: {e}")
+        return None
+    except Exception as e:
+        print(f"❌ Image fetch error: {e}")
+        return None
 
 # --- Recordings Fetch & Cache ---
 
@@ -187,7 +236,7 @@ def select_snippet(lines):
 
 # --- Twitter ---
 
-def tweet_lyric(text):
+def tweet_lyric_with_image(text, image_path):
     client = tweepy.Client(
         consumer_key=API_KEY,
         consumer_secret=API_SECRET,
@@ -195,10 +244,26 @@ def tweet_lyric(text):
         access_token_secret=ACCESS_TOKEN_SECRET,
         bearer_token=BEARER_TOKEN
     )
-    print(f"📤 Attempting to tweet: {text}")
+    # Initialize Tweepy API for media upload (v1.1 API required for media)
+    auth = tweepy.OAuth1UserHandler(
+        consumer_key=API_KEY,
+        consumer_secret=API_SECRET,
+        access_token=ACCESS_TOKEN,
+        access_token_secret=ACCESS_TOKEN_SECRET
+    )
+    api = tweepy.API(auth)
+    
+    print(f"📤 Attempting to tweet: {text} with image: {image_path}")
     try:
-        client.create_tweet(text=text)
-        print("✅ Tweet posted successfully")
+        # Upload media
+        media = api.media_upload(image_path)
+        # Post tweet with media
+        client.create_tweet(text=text, media_ids=[media.media_id])
+        print("✅ Tweet with image posted successfully")
+        # Clean up temporary image file
+        if os.path.exists(image_path):
+            os.remove(image_path)
+            print(f"🗑️ Removed temporary image: {image_path}")
         return True
     except Exception as e:
         print(f"❌ Tweepy error: {e}")
@@ -219,7 +284,7 @@ def main():
 
     print(f"🔢 Total recordings: {len(recordings)}")
 
-    # filter usable songs
+    # Filter usable songs
     possible = []
     for title in recordings:
         if any(key in title.lower() for key in SKIP_TITLE_KEYWORDS):
@@ -241,22 +306,36 @@ def main():
         print(f"🎵 Processing song: {title}")
         key = normalize_title(title)
 
+        # Fetch lyrics
         lyrics = fetch_lyrics("Michael Jackson", title)
         if not lyrics:
             print(f"⚠️ No lyrics found for {title}, marking as no lyrics")
             save_no_lyrics(NO_LYRICS_FILE, key)
             continue
 
+        # Select tweet snippet
         snippet = select_snippet(clean_lyrics(lyrics))
-        if snippet:
-            if tweet_lyric(snippet):
-                save_used_song(USED_SONGS_FILE, key)
-                print(f"🎉 Successfully tweeted for {title}")
-                break
-            else:
-                print(f"❌ Failed to tweet for {title}, moving to next song")
-        else:
+        if not snippet:
             print(f"⚠️ No valid snippet for {title}, moving to next song")
+            continue
+
+        # Fetch image
+        image_path = fetch_mj_image(f"Michael Jackson {title}")
+        if not image_path:
+            print(f"⚠️ No image found for {title}, skipping to next song")
+            continue
+
+        # Tweet with image
+        if tweet_lyric_with_image(snippet, image_path):
+            save_used_song(USED_SONGS_FILE, key)
+            print(f"🎉 Successfully tweeted for {title}")
+            break
+        else:
+            print(f"❌ Failed to tweet for {title}, moving to next song")
+            # Clean up image if tweet failed
+            if os.path.exists(image_path):
+                os.remove(image_path)
+                print(f"🗑️ Removed temporary image: {image_path}")
 
     print("🏁 Script completed")
 
